@@ -4,6 +4,7 @@ import './App.css';
 const API_URL = 'http://localhost:3000/api';
 const RANDOM_API_URL = 'http://localhost:3001/api';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
+const EVENTS_HUB_URL = 'http://localhost:3002/api';
 
 function App() {
   const [featuredMovie, setFeaturedMovie] = useState(null);
@@ -12,6 +13,11 @@ function App() {
   const [randomMovies, setRandomMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMovie, setSelectedMovie] = useState(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [ratingMovie, setRatingMovie] = useState(null);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [movieDetails, setMovieDetails] = useState({});
+  const [notification, setNotification] = useState({ show: false, message: '', type: '' });
 
   useEffect(() => {
     fetchMovies();
@@ -49,8 +55,154 @@ function App() {
     }
   };
 
+  const fetchMovieDetails = async (movieId) => {
+    try {
+      const response = await fetch(`${API_URL}/movies/${movieId}`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching movie details:', error);
+      return null;
+    }
+  };
+
+  const sendEventToHub = async (eventType, movieData) => {
+    try {
+      const eventPayload = {
+        type: eventType,
+        data: {
+          movieId: movieData.movieId,
+          movieName: movieData.movieName,
+          cast: movieData.cast || [],
+          director: movieData.director || '',
+          genre: movieData.genre || [],
+          ...(eventType === 'calification' && { rating: movieData.rating })
+        }
+      };
+
+      const response = await fetch(`${EVENTS_HUB_URL}/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(eventPayload),
+      });
+
+      if (!response.ok) {
+        console.error('Error sending event to hub:', response.status);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const handleMovieClick = async (movie) => {
+    setSelectedMovie(movie);
+    
+    // Obtener detalles completos de la película
+    const details = await fetchMovieDetails(movie.id);
+    
+    let movieData = {
+      movieId: movie.id,
+      movieName: movie.title,
+      cast: [],
+      director: '',
+      genre: []
+    };
+
+    if (details) {
+      // Extraer director
+      if (details.credits && details.credits.crew) {
+        const director = details.credits.crew.find(person => person.job === 'Director');
+        movieData.director = director ? director.name : '';
+      }
+      
+      // Extraer elenco (primeros 5 actores)
+      if (details.credits && details.credits.cast) {
+        movieData.cast = details.credits.cast.slice(0, 5).map(actor => actor.name);
+      }
+      
+      // Extraer géneros
+      if (details.genres) {
+        movieData.genre = details.genres.map(g => g.name);
+      }
+
+      setMovieDetails(movieData);
+    }
+
+    // Enviar evento de click al hub
+    await sendEventToHub('click', movieData);
+  };
+
+  const handlePlayClick = async () => {
+    if (selectedMovie && Object.keys(movieDetails).length > 0) {
+      await sendEventToHub('play', movieDetails);
+      console.log('Evento de reproducción enviado');
+    }
+  };
+
+  const handleOpenRatingModal = (movie) => {
+    setRatingMovie(movie);
+    setShowRatingModal(true);
+    setSelectedRating(0);
+  };
+
+  const handleSubmitRating = async () => {
+    if (selectedRating === 0) {
+      setNotification({ show: true, message: 'Por favor selecciona una calificación', type: 'warning' });
+      setTimeout(() => setNotification({ show: false, message: '', type: '' }), 3000);
+      return;
+    }
+
+    const ratingData = {
+      movieId: ratingMovie.id,
+      movieName: ratingMovie.title,
+      cast: movieDetails.cast || [],
+      director: movieDetails.director || '',
+      genre: movieDetails.genre || [],
+      rating: selectedRating * 2
+    };
+
+    // Enviar evento de calificación al hub
+    await sendEventToHub('calification', ratingData);
+
+    setNotification({ show: true, message: '¡Calificación enviada exitosamente!', type: 'success' });
+    setTimeout(() => setNotification({ show: false, message: '', type: '' }), 3000);
+    
+    setShowRatingModal(false);
+    setSelectedRating(0);
+    setRatingMovie(null);
+  };
+
+  const RatingStars = ({ rating, onRate }) => {
+    return (
+      <div className="rating-stars">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            className={`star ${star <= rating ? 'active' : ''}`}
+            onClick={() => onRate(star)}
+            title={`${star} estrella${star > 1 ? 's' : ''}`}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  const Notification = () => {
+    if (!notification.show) return null;
+    
+    return (
+      <div className={`notification notification-${notification.type}`}>
+        <p>{notification.message}</p>
+      </div>
+    );
+  };
+
   const MovieCard = ({ movie }) => (
-    <div className="movie-card" onClick={() => setSelectedMovie(movie)}>
+    <div className="movie-card" onClick={() => handleMovieClick(movie)}>
       <img
         src={`${IMAGE_BASE_URL}/w500${movie.poster_path}`}
         alt={movie.title}
@@ -134,7 +286,8 @@ function App() {
 
   return (
     <div className="app">
-      {/* Header */}
+      {/* Notification */}
+      <Notification />
       <header className="header">
         <h1 className="logo">DCICflix</h1>
         <nav>
@@ -198,9 +351,35 @@ function App() {
                 </div>
                 <p className="modal-overview">{selectedMovie.overview || 'Sin descripción disponible.'}</p>
                 <div className="modal-buttons">
-                  <button className="btn btn-play">▶ Reproducir</button>
+                  <button className="btn btn-play" onClick={handlePlayClick}>▶ Reproducir</button>
+                  <button className="btn btn-rating" onClick={() => handleOpenRatingModal(selectedMovie)}>⭐ Calificar</button>
                   <button className="btn btn-info" onClick={() => setSelectedMovie(null)}>Cerrar</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rating Modal */}
+      {showRatingModal && ratingMovie && (
+        <div className="modal-overlay" onClick={() => setShowRatingModal(false)}>
+          <div className="modal-content rating-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowRatingModal(false)}>×</button>
+            <div className="rating-modal-content">
+              <h2>Calificar: {ratingMovie.title}</h2>
+              <p className="rating-instruction">¿Qué te pareció esta película?</p>
+              <RatingStars rating={selectedRating} onRate={setSelectedRating} />
+              <div className="rating-display">
+                {selectedRating > 0 && <p className="selected-rating">{selectedRating} de 5 estrellas</p>}
+              </div>
+              <div className="rating-modal-buttons">
+                <button className="btn btn-play" onClick={handleSubmitRating}>
+                  Enviar Calificación
+                </button>
+                <button className="btn btn-info" onClick={() => setShowRatingModal(false)}>
+                  Cancelar
+                </button>
               </div>
             </div>
           </div>

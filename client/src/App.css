@@ -10,6 +10,59 @@
   min-height: 100vh;
 }
 
+/* Notification */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 15px 25px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  z-index: 2000;
+  animation: slideIn 0.3s ease-in-out, slideOut 0.3s ease-in-out 2.7s forwards;
+}
+
+.notification-success {
+  background-color: #4caf50;
+  color: white;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.notification-warning {
+  background-color: #ff9800;
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+}
+
+.notification-error {
+  background-color: #f44336;
+  color: white;
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+}
+
+.notification p {
+  margin: 0;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  to {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+}
+
 /* Header */
 .header {
   position: fixed;
@@ -113,6 +166,15 @@ nav a:hover {
 
 .btn-info:hover {
   background-color: rgba(109,109,110,0.5);
+}
+
+.btn-rating {
+  background-color: rgba(229, 9, 20, 0.8);
+  color: white;
+}
+
+.btn-rating:hover {
+  background-color: rgba(229, 9, 20, 1);
 }
 
 /* Content */
@@ -350,6 +412,76 @@ nav a:hover {
   flex: 1;
 }
 
+/* Rating Modal */
+.rating-modal {
+  max-width: 500px;
+}
+
+.rating-modal-content {
+  padding: 40px 30px;
+  text-align: center;
+}
+
+.rating-modal-content h2 {
+  font-size: 1.8rem;
+  margin-bottom: 15px;
+  color: #fff;
+}
+
+.rating-instruction {
+  font-size: 1rem;
+  color: #b3b3b3;
+  margin-bottom: 30px;
+}
+
+.rating-stars {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-bottom: 30px;
+  font-size: 3rem;
+}
+
+.star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+  padding: 0;
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.star:hover {
+  color: #ffd700;
+  transform: scale(1.2);
+}
+
+.star.active {
+  color: #ffd700;
+}
+
+.rating-display {
+  margin-bottom: 30px;
+  min-height: 30px;
+}
+
+.selected-rating {
+  font-size: 1.2rem;
+  color: #ffd700;
+  font-weight: bold;
+}
+
+.rating-modal-buttons {
+  display: flex;
+  gap: 15px;
+}
+
+.rating-modal-buttons .btn {
+  flex: 1;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .header {
@@ -369,6 +501,7 @@ nav a:hover {
     font-size: 1rem;
     display: -webkit-box;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
