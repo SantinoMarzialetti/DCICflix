@@ -1,42 +1,41 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-// Si no existe .env, intentar usar .env.example
-if (!process.env.MONGODB_URI) {
-  require('dotenv').config({ path: path.join(__dirname, '.env.example') });
-}
-
 const express = require('express');
 const cors = require('cors');
-const { setupRabbitMQ } = require('./rabbitmq/connection');
-const calificationRoutes = require('./routes/calificationRoutes');
+const mongoose = require('mongoose');
+const { setupRabbitMQ, consumeMessages } = require('./rabbitmq/connection');
 
 const app = express();
-const PORT = process.env.PORT || 3003;
+const PORT = process.env.PORT || 3004;
 
 // Middlewares
 app.use(cors());
 app.use(express.json());
 
-// Rutas
-app.use('/api/events', calificationRoutes);
-
 // Ruta de salud
 app.get('/health', (req, res) => {
-  res.json({ status: 'Events Hub service is running' });
+  res.json({ status: 'Opiniones service is running' });
 });
 
-// Conectar a RabbitMQ
+// Conectar a MongoDB y RabbitMQ
 async function startServer() {
   try {
+    // Conectar a MongoDB
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log('✓ Conectado a MongoDB');
 
-    // Conectar a RabbitMQ
+    // Conectar a RabbitMQ y empezar a consumir
     await setupRabbitMQ();
     console.log('✓ Conectado a RabbitMQ');
 
+    // Iniciar consumo de mensajes
+    await consumeMessages();
+    console.log('✓ Consumer iniciado');
+
     // Iniciar servidor
     app.listen(PORT, () => {
-      console.log(`✓ Events Hub ejecutándose en puerto ${PORT}`);
+      console.log(`✓ Opiniones ejecutándose en puerto ${PORT}`);
     });
   } catch (error) {
     console.error('✗ Error al iniciar el servidor:', error);
