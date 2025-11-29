@@ -11,70 +11,73 @@ app.use(cors());
 app.use(express.json());
 
 // API Configuration
-const TMDB_API_KEY = process.env.TMDB_API_KEY;
-const TMDB_BASE_URL = process.env.TMDB_BASE_URL;
+const API_MOVIES_URL = process.env.API_MOVIES_URL || 'http://localhost:3007/api/movies';
 
-const tmdbHeaders = {
-  Authorization: `Bearer ${TMDB_API_KEY}`,
-  'Content-Type': 'application/json'
-};
-
-// Cache para películas populares (para obtener IDs válidos)
-let movieIdsCache = [];
+// Cache para películas (para obtener IDs válidos)
+let moviesCache = [];
 let lastCacheUpdate = 0;
 const CACHE_DURATION = 3600000; // 1 hora en milisegundos
+let currentPage = 1; // Página actual de la API para rotación
+let totalPages = 1; // Total de páginas disponibles
 
-// Función para actualizar el cache de IDs de películas
-async function updateMovieIdsCache() {
+// Función para actualizar el cache de películas desde api-movies
+async function updateMoviesCache() {
   try {
     const now = Date.now();
-    if (movieIdsCache.length > 0 && (now - lastCacheUpdate) < CACHE_DURATION) {
-      return movieIdsCache;
+    
+    // Verificar si el caché sigue siendo válido (menos de 1 hora)
+    if (moviesCache.length > 0 && (now - lastCacheUpdate) < CACHE_DURATION) {
+      return moviesCache;
     }
 
-    console.log('Actualizando cache de IDs de películas...');
-    const pages = [1, 2, 3, 4, 5]; // Obtener las primeras 5 páginas (100 películas)
-    const allIds = [];
-
-    for (const page of pages) {
-      const response = await axios.get(`${TMDB_BASE_URL}/movie/popular`, {
-        headers: tmdbHeaders,
-        params: { language: 'es-ES', page }
+    console.log(`\n📥 Cargando 100 películas (página ${currentPage}/${totalPages})...`);
+    
+    try {
+      const response = await axios.get(API_MOVIES_URL, {
+        params: {
+          page: currentPage,
+          limit: 100
+        },
+        timeout: 10000
       });
-      const ids = response.data.results.map(movie => movie.id);
-      allIds.push(...ids);
-    }
 
-    movieIdsCache = allIds;
-    lastCacheUpdate = now;
-    console.log(`Cache actualizado con ${movieIdsCache.length} películas`);
-    return movieIdsCache;
+      // La API retorna { success, data: [...], total, page, pages }
+      if (response.data && response.data.data && Array.isArray(response.data.data)) {
+        const movies = response.data.data;
+        totalPages = response.data.pages || 1;
+        
+        moviesCache = movies;
+        lastCacheUpdate = now;
+        
+        console.log(`✓ Cache cargado: ${movies.length} películas (página ${currentPage}/${totalPages})`);
+        
+        // Rotar a la siguiente página para el próximo caché
+        currentPage++;
+        if (currentPage > totalPages) {
+          currentPage = 1; // Volver a la primera página cuando llegamos al final
+        }
+        
+        return moviesCache;
+      } else {
+        console.warn('⚠️  Respuesta inesperada:', response.data);
+        return moviesCache;
+      }
+    } catch (error) {
+      console.error(`✗ Error obteniendo películas de la API:`, error.message);
+      return moviesCache;
+    }
   } catch (error) {
-    console.error('Error actualizando cache:', error.message);
-    return movieIdsCache;
+    console.error('✗ Error actualizando cache:', error.message);
+    return moviesCache;
   }
 }
 
-// Función para obtener IDs aleatorios
-function getRandomMovieIds(count = 10) {
-  const shuffled = [...movieIdsCache].sort(() => 0.5 - Math.random());
+// Función para obtener películas aleatorias del cache
+function getRandomMovies(count = 10) {
+  if (moviesCache.length === 0) return [];
+  
+  const shuffled = [...moviesCache].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, count);
-}
-
-// Función para obtener detalles de películas por IDs
-async function getMoviesByIds(ids) {
-  const promises = ids.map(id =>
-    axios.get(`${TMDB_BASE_URL}/movie/${id}`, {
-      headers: tmdbHeaders,
-      params: { language: 'es-ES' }
-    }).catch(err => {
-      console.error(`Error obteniendo película ${id}:`, err.message);
-      return null;
-    })
-  );
-
-  const results = await Promise.all(promises);
-  return results.filter(res => res !== null).map(res => res.data);
 }
 
 // Ruta principal: Obtener películas aleatorias
@@ -83,22 +86,19 @@ app.get('/api/random-movies', async (req, res) => {
     const count = parseInt(req.query.count) || 10;
     
     // Actualizar cache si es necesario
-    await updateMovieIdsCache();
+    await updateMoviesCache();
 
-    if (movieIdsCache.length === 0) {
+    if (moviesCache.length === 0) {
       return res.status(500).json({ error: 'No se pudieron obtener películas' });
     }
 
-    // Obtener IDs aleatorios
-    const randomIds = getRandomMovieIds(count);
-
-    // Obtener detalles de las películas
-    const movies = await getMoviesByIds(randomIds);
+    // Obtener películas aleatorias del cache
+    const randomMovies = getRandomMovies(count);
 
     res.json({
       success: true,
-      count: movies.length,
-      movies
+      count: randomMovies.length,
+      movies: randomMovies
     });
   } catch (error) {
     console.error('Error en /api/random-movies:', error.message);
@@ -109,21 +109,17 @@ app.get('/api/random-movies', async (req, res) => {
 // Ruta para obtener una sola película aleatoria
 app.get('/api/random-movie', async (req, res) => {
   try {
-    await updateMovieIdsCache();
+    await updateMoviesCache();
 
-    if (movieIdsCache.length === 0) {
+    if (moviesCache.length === 0) {
       return res.status(500).json({ error: 'No se pudo obtener una película' });
     }
 
-    const randomId = movieIdsCache[Math.floor(Math.random() * movieIdsCache.length)];
-    const response = await axios.get(`${TMDB_BASE_URL}/movie/${randomId}`, {
-      headers: tmdbHeaders,
-      params: { language: 'es-ES' }
-    });
+    const randomMovie = moviesCache[Math.floor(Math.random() * moviesCache.length)];
 
     res.json({
       success: true,
-      movie: response.data
+      movie: randomMovie
     });
   } catch (error) {
     console.error('Error en /api/random-movie:', error.message);
@@ -136,14 +132,48 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Random Movie Service is running',
-    cachedMovies: movieIdsCache.length,
-    lastUpdate: new Date(lastCacheUpdate).toISOString()
+    cachedMovies: moviesCache.length,
+    currentPage: currentPage,
+    totalPages: totalPages,
+    lastUpdate: new Date(lastCacheUpdate).toISOString(),
+    apiMoviesUrl: API_MOVIES_URL
   });
 });
 
 // Inicializar cache al arrancar
-updateMovieIdsCache().then(() => {
+async function startServer() {
+  let retries = 0;
+  const maxRetries = 10;
+
+  while (retries < maxRetries) {
+    try {
+      console.log(`Intentando cargar películas (intento ${retries + 1}/${maxRetries})...`);
+      await updateMoviesCache();
+      
+      if (moviesCache.length > 0) {
+        console.log(`✅ Conexión exitosa. ${moviesCache.length} películas cargadas.`);
+        break;
+      } else {
+        console.log('⚠️  No se obtuvieron películas. Reintentando en 5 segundos...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        retries++;
+      }
+    } catch (error) {
+      console.error(`❌ Error: ${error.message}. Reintentando en 5 segundos...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      retries++;
+    }
+  }
+
+  if (moviesCache.length === 0) {
+    console.warn('⚠️  No se pudieron cargar películas después de varios intentos. El servicio iniciará pero sin películas en caché.');
+  }
+
   app.listen(PORT, () => {
     console.log(`🎬 Random Movie Service running on http://localhost:${PORT}`);
+    console.log(`📽️  Conectado a api-movies: ${API_MOVIES_URL}`);
+    console.log(`📊 Películas en caché: ${moviesCache.length}`);
   });
-});
+}
+
+startServer();

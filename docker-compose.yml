@@ -71,5 +71,35 @@ services:
       mongodb:
         condition: service_healthy
 
+  api-movies:
+    build: ./api-movies
+    ports:
+      - "3007:3007"
+    environment:
+      PORT: 3007
+      MONGODB_URI: mongodb+srv://admin321:admin123@moviesdb.hsjqo6c.mongodb.net/?appName=MoviesDB
+      NODE_ENV: production
+    healthcheck:
+      test: wget --quiet --tries=1 --spider http://localhost:3007/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  random-movie:
+    build: ./random-movie
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      API_MOVIES_URL: http://api-movies:3007/api/movies
+    depends_on:
+      api-movies:
+        condition: service_healthy
+    healthcheck:
+      test: wget --quiet --tries=1 --spider http://localhost:3001/api/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
 volumes:
   mongo_data:

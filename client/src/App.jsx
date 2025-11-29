@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
+import placeholderImage from './assets/placeholder-poster.svg';
 
 const API_URL = 'http://localhost:3000/api';
 const RANDOM_API_URL = 'http://localhost:3001/api';
+const MOVIES_API_URL = 'http://localhost:3004/api/movies';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
 const EVENTS_HUB_URL = 'http://localhost:3002/api';
+const PLACEHOLDER_POSTER = placeholderImage;
 
 function App() {
   const [featuredMovie, setFeaturedMovie] = useState(null);
@@ -27,10 +30,21 @@ function App() {
     try {
       setLoading(true);
       
-      // Fetch popular movies
-      const popularRes = await fetch(`${API_URL}/movies/popular`);
+      // Fetch popular movies from new API
+      const popularRes = await fetch(`${MOVIES_API_URL}?page=1&limit=20`);
       const popularData = await popularRes.json();
-      setPopularMovies(popularData.results || []);
+      const moviesFromAPI = (popularData.data || []).map(movie => ({
+        id: movie._id,
+        title: movie.title,
+        poster_path: movie.poster || '',
+        backdrop_path: movie.poster || '',
+        vote_average: movie.imdb?.rating || 0,
+        overview: movie.plot || movie.fullplot || '',
+        release_date: movie.released ? new Date(movie.released).toISOString().split('T')[0] : null,
+        original_language: 'en',
+        poster: movie.poster || ''
+      }));
+      setPopularMovies(moviesFromAPI);
       
       // Fetch top rated movies
       const topRatedRes = await fetch(`${API_URL}/movies/top-rated`);
@@ -42,9 +56,9 @@ function App() {
       const randomData = await randomRes.json();
       setRandomMovies(randomData.movies || []);
       
-      // Set random featured movie from popular
-      if (popularData.results && popularData.results.length > 0) {
-        const randomMovie = popularData.results[Math.floor(Math.random() * popularData.results.length)];
+      // Set random featured movie from API movies
+      if (moviesFromAPI.length > 0) {
+        const randomMovie = moviesFromAPI[Math.floor(Math.random() * moviesFromAPI.length)];
         setFeaturedMovie(randomMovie);
       }
       
@@ -201,21 +215,27 @@ function App() {
     );
   };
 
-  const MovieCard = ({ movie }) => (
-    <div className="movie-card" onClick={() => handleMovieClick(movie)}>
-      <img
-        src={`${IMAGE_BASE_URL}/w500${movie.poster_path}`}
-        alt={movie.title}
-        onError={(e) => {
-          e.target.src = 'https://via.placeholder.com/500x750?text=No+Image';
-        }}
-      />
-      <div className="movie-info">
-        <h3>{movie.title}</h3>
-        <p>⭐ {movie.vote_average.toFixed(1)}</p>
+  const MovieCard = ({ movie }) => {
+    const posterUrl = movie.poster_path ? 
+      (movie.poster_path.startsWith('http') ? movie.poster_path : `${IMAGE_BASE_URL}/w500${movie.poster_path}`) : 
+      PLACEHOLDER_POSTER;
+    
+    return (
+      <div className="movie-card" onClick={() => handleMovieClick(movie)}>
+        <img
+          src={posterUrl}
+          alt={movie.title}
+          onError={(e) => {
+            e.target.src = PLACEHOLDER_POSTER;
+          }}
+        />
+        <div className="movie-info">
+          <h3>{movie.title}</h3>
+          <p>⭐ {movie.vote_average.toFixed(1)}</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const MovieRow = ({ title, movies }) => {
     const listRef = useRef(null);
@@ -302,7 +322,11 @@ function App() {
         <div 
           className="featured"
           style={{
-            backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.9)), url(${IMAGE_BASE_URL}/original${featuredMovie.backdrop_path})`
+            backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.9)), url(${
+              featuredMovie.backdrop_path && featuredMovie.backdrop_path.startsWith('http') 
+                ? featuredMovie.backdrop_path 
+                : `${IMAGE_BASE_URL}/original${featuredMovie.backdrop_path}`
+            })`
           }}
         >
           <div className="featured-content">
@@ -331,11 +355,15 @@ function App() {
             <button className="modal-close" onClick={() => setSelectedMovie(null)}>×</button>
             <div className="modal-header">
               <img
-                src={`${IMAGE_BASE_URL}/w500${selectedMovie.poster_path}`}
+                src={
+                  selectedMovie.poster_path && selectedMovie.poster_path.startsWith('http')
+                    ? selectedMovie.poster_path
+                    : `${IMAGE_BASE_URL}/w500${selectedMovie.poster_path}`
+                }
                 alt={selectedMovie.title}
                 className="modal-poster"
                 onError={(e) => {
-                  e.target.src = 'https://via.placeholder.com/500x750?text=No+Image';
+                  e.target.src = PLACEHOLDER_POSTER;
                 }}
               />
               <div className="modal-info">
