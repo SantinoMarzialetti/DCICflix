@@ -1,6 +1,6 @@
 const amqp = require('amqplib');
+const axios = require('axios');
 const Click = require('../models/Click');
-const Calification = require('../models/Calification');
 const Play = require('../models/Play');
 
 let channel = null;
@@ -64,23 +64,25 @@ async function consumeMessages() {
           const data = JSON.parse(msg.content.toString());
           console.log('📥 Calificación recibida:', data);
 
-          let calification = await Calification.findOne({ movieId: data.movieId });
-
-          if (calification) {
-            calification.movieName = data.movieName || calification.movieName;
-            calification.cast = data.cast || calification.cast;
-            calification.director = data.director || calification.director;
-            calification.genre = data.genre || calification.genre;
-            calification.rating = data.rating;
-            await calification.save();
-            console.log('✓ Calificación actualizada en BD');
-          } else {
-            calification = new Calification(data);
-            await calification.save();
-            console.log('✓ Calificación creada en BD');
+          // Hacer POST al endpoint local para actualizar rating en Atlas
+          // Usar "opiniones" (nombre del servicio en Docker) en lugar de localhost
+          try {
+            const response = await axios.post('http://opiniones:3004/api/update-rating', {
+              movieId: data.movieId,
+              rating: data.rating
+            });
+            
+            if (response.data.success) {
+              console.log(`✓ Rating actualizado - ${response.data.movie} (${response.data.newRating})`);
+              channel.ack(msg);
+            } else {
+              console.error('✗ Error en respuesta de update-rating:', response.data.error);
+              channel.nack(msg, false, true);
+            }
+          } catch (apiError) {
+            console.error('✗ Error llamando a /api/update-rating:', apiError.message);
+            channel.nack(msg, false, true);
           }
-
-          channel.ack(msg);
         } catch (error) {
           console.error('✗ Error procesando calificación:', error);
           channel.nack(msg, false, true);
