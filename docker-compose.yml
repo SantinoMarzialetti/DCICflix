@@ -1,6 +1,41 @@
-version: '3.8'
-
 services:
+  server:
+    build: ./
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_EXCHANGE: events_exchange
+      NODE_ENV: production
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      api-movies:
+        condition: service_healthy
+    healthcheck:
+      test: node -e "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  client:
+    build: ./client
+    ports:
+      - "5173:8080"
+    environment:
+      VITE_API_URL: http://localhost:3000/api
+      VITE_RANDOM_API_URL: http://localhost:3001/api
+      VITE_MOVIES_API_URL: http://localhost:3007/api/movies
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: node -e "require('http').get('http://localhost:8080', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:3-management
     ports:
@@ -44,19 +79,7 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  recommender:
-    build: ./recommender
-    ports:
-      - "3005:3005"
-    environment:
-      PORT: 3005
-      MONGODB_URI_LOCAL: mongodb://mongodb:27017/dcicflix_db
-      MONGODB_URI_ATLAS: mongodb+srv://usuario:password@cluster.mongodb.net/DCICflix?retryWrites=true&w=majority
-    depends_on:
-      mongodb:
-        condition: service_healthy
-
-         api-movies:
+  api-movies:
     build: ./api-movies
     ports:
       - "3007:3007"
@@ -85,6 +108,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-
-volumes:
-  mongo_data:
