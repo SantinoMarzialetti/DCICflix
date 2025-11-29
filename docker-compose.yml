@@ -1,20 +1,6 @@
 version: '3.8'
 
 services:
-  mongodb:
-    image: mongo:latest
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: dcicflix_db
-    healthcheck:
-      test: mongosh --eval "db.adminCommand('ping')"
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   rabbitmq:
     image: rabbitmq:3-management
     ports:
@@ -48,14 +34,13 @@ services:
     environment:
       PORT: 3004
       MONGODB_URI: mongodb://mongodb:27017/dcicflix_db
+      MONGODB_URI_ATLAS: mongodb+srv://admin321:admin123@moviesdb.hsjqo6c.mongodb.net/peliculas?retryWrites=true&w=majority&serverSelectionTimeoutMS=15000
       RABBITMQ_URL: amqp://rabbitmq:5672
       RABBITMQ_EXCHANGE: events_exchange
       RABBITMQ_QUEUE_CLICKS: clicks_queue
       RABBITMQ_QUEUE_CALIFICATIONS: califications_queue
       RABBITMQ_QUEUE_PLAYS: plays_queue
     depends_on:
-      mongodb:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
 
@@ -71,7 +56,7 @@ services:
       mongodb:
         condition: service_healthy
 
-  api-movies:
+         api-movies:
     build: ./api-movies
     ports:
       - "3007:3007"
