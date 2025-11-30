@@ -1,6 +1,7 @@
 services:
   server:
     build: ./
+    container_name: server
     ports:
       - "3000:3000"
     environment:
@@ -8,36 +9,23 @@ services:
       RABBITMQ_URL: amqp://rabbitmq:5672
       RABBITMQ_EXCHANGE: events_exchange
       NODE_ENV: production
+      DATA_DIR: /app/data
     depends_on:
       rabbitmq:
         condition: service_healthy
       api-movies:
         condition: service_healthy
+    volumes:
+      - server_data:/app/data
     healthcheck:
       test: node -e "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  client:
-    build: ./client
-    ports:
-      - "5173:8080"
-    environment:
-      VITE_API_URL: http://localhost:3000/api
-      VITE_RANDOM_API_URL: http://localhost:3001/api
-      VITE_MOVIES_API_URL: http://localhost:3007/api/movies
-    depends_on:
-      server:
-        condition: service_healthy
-    healthcheck:
-      test: node -e "require('http').get('http://localhost:8080', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   rabbitmq:
     image: rabbitmq:3-management
+    container_name: rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -49,6 +37,7 @@ services:
 
   calification:
     build: ./calification
+    container_name: calification
     ports:
       - "3003:3003"
     environment:
@@ -64,6 +53,7 @@ services:
 
   opiniones:
     build: ./opinions
+    container_name: opiniones
     ports:
       - "3004:3004"
     environment:
@@ -75,12 +65,20 @@ services:
       RABBITMQ_QUEUE_CLICKS: clicks_queue
       RABBITMQ_QUEUE_CALIFICATIONS: califications_queue
       RABBITMQ_QUEUE_PLAYS: plays_queue
+      CLICKS_DIR: /data/clicks
+      PLAYS_DIR: /data/plays
+      RATINGS_DIR: /data/ratings
     depends_on:
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - clicks_data:/data/clicks
+      - plays_data:/data/plays
+      - ratings_data:/data/ratings
 
   api-movies:
     build: ./api-movies
+    container_name: api-movies
     ports:
       - "3007:3007"
     environment:
@@ -95,6 +93,7 @@ services:
 
   random-movie:
     build: ./random-movie
+    container_name: random-movie
     ports:
       - "3001:3001"
     environment:
@@ -104,7 +103,53 @@ services:
       api-movies:
         condition: service_healthy
     healthcheck:
-      test: wget --quiet --tries=1 --spider http://localhost:3001/api/health || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: wget --quiet --tries=1 --spider http://localhost:3001 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  client:
+    build: ./client
+    container_name: client
+    ports:
+      - "5173:8080"
+    environment:
+      VITE_API_URL: http://server:3000/api
+      VITE_RANDOM_API_URL: http://random-movie:3001/api
+      VITE_MOVIES_API_URL: http://api-movies:3007/api/movies
+    healthcheck:
+      test: wget --quiet --tries=1 --spider http://localhost:8080 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  recommender:
+    build: ./recommender
+    container_name: recommender
+    ports:
+      - "3005:3005"
+    environment:
+      PORT: 3005
+      CLICKS_DIR: /data/clicks
+      PLAYS_DIR: /data/plays
+      RATINGS_DIR: /data/ratings
+      SERVER_DATA_DIR: /server/data
+    depends_on:
+      - opiniones
+      - api-movies
+    volumes:
+      - clicks_data:/data/clicks
+      - plays_data:/data/plays
+      - ratings_data:/data/ratings
+      - server_data:/server/data
+    healthcheck:
+      test: wget --quiet --tries=1 --spider http://localhost:3005/api/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  server_data:
+  clicks_data:
+  plays_data:
+  ratings_data:

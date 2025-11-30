@@ -5,13 +5,13 @@ import placeholderImage from './assets/placeholder-poster.svg';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 const RANDOM_API_URL = import.meta.env.VITE_RANDOM_API_URL || 'http://localhost:3001/api';
 const MOVIES_API_URL = import.meta.env.VITE_MOVIES_API_URL || 'http://localhost:3007/api/movies';
-const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
 const PLACEHOLDER_POSTER = placeholderImage;
 
 function App() {
   const [featuredMovie, setFeaturedMovie] = useState(null);
   const [popularMovies, setPopularMovies] = useState([]);
   const [randomMovies, setRandomMovies] = useState([]);
+  const [recommendedMovies, setRecommendedMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -23,6 +23,17 @@ function App() {
 
   useEffect(() => {
     fetchMovies();
+    loadRecommendations(); // Cargar recomendaciones iniciales
+  }, []);
+
+  // 🔄 Recargar recomendaciones automáticamente cada 5 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('🔄 Recargando recomendaciones automáticamente...');
+      loadRecommendations();
+    }, 5000); // Cada 5 segundos
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchMovies = async () => {
@@ -111,6 +122,79 @@ function App() {
     }
   };
 
+  // Cargar recomendaciones desde el microservicio recommender
+  const loadRecommendations = async () => {
+    try {
+      console.log('📊 Cargando recomendaciones desde:', `${API_URL}/recommendations`);
+      const response = await fetch(`${API_URL}/recommendations?limit=10`);
+      
+      if (!response.ok) {
+        console.warn('⚠️ Recommender no disponible, usando películas populares');
+        return;
+      }
+
+      const data = await response.json();
+      console.log('✅ Recomendaciones obtenidas:', data);
+
+      if (data.recommendations && Array.isArray(data.recommendations)) {
+        // Mapear las recomendaciones a formato de película
+        const recommendedList = await Promise.all(
+          data.recommendations.map(async (rec) => {
+            // Intentar obtener detalles completos de la película desde API movies
+            try {
+              const movieRes = await fetch(`${MOVIES_API_URL}/${rec.movieId}`);
+              if (movieRes.ok) {
+                const movieData = await movieRes.json();
+                return {
+                  id: movieData._id || rec.movieId,
+                  title: rec.name || movieData.title,
+                  poster_path: movieData.poster || rec.poster || '',
+                  backdrop_path: movieData.poster || rec.poster || '',
+                  vote_average: movieData.imdb?.rating || rec.rating || 0,
+                  overview: movieData.plot || movieData.fullplot || rec.overview || '',
+                  release_date: movieData.released ? new Date(movieData.released).toISOString().split('T')[0] : null,
+                  original_language: 'en',
+                  poster: movieData.poster || '',
+                  genres: movieData.genres || rec.genre || [],
+                  director: movieData.directors?.[0] || rec.director || '',
+                  cast: movieData.cast || [],
+                  recommendationPhase: rec.phase,
+                  recommendationReason: rec.reason
+                };
+              }
+            } catch (error) {
+              console.warn(`⚠️ No se pudo obtener detalles de película ${rec.movieId}:`, error);
+            }
+            
+            // Fallback: usar los datos de la recomendación
+            return {
+              id: rec.movieId,
+              title: rec.name,
+              poster_path: rec.poster || '',
+              backdrop_path: rec.poster || '',
+              vote_average: rec.rating || 0,
+              overview: rec.overview || '',
+              release_date: null,
+              original_language: 'en',
+              poster: rec.poster || '',
+              genres: rec.genre || [],
+              director: rec.director || '',
+              cast: [],
+              recommendationPhase: rec.phase,
+              recommendationReason: rec.reason
+            };
+          })
+        );
+
+        setRecommendedMovies(recommendedList);
+        console.log('📊 Estado de interacciones:', data.stats);
+        console.log(`   Total: ${data.stats.total} (Clicks: ${data.stats.clicks}, Plays: ${data.stats.plays}, Ratings: ${data.stats.ratings})`);
+      }
+    } catch (error) {
+      console.error('❌ Error cargando recomendaciones:', error);
+    }
+  };
+
   const fetchMovieDetails = async (movieId) => {
     try {
       console.log('Intentando obtener detalles de película desde:', `${API_URL}/movies/${movieId}`);
@@ -170,6 +254,12 @@ function App() {
       } else {
         const result = await response.json();
         console.log(`✅ Evento ${eventType} enviado exitosamente:`, result);
+        
+        // 🔄 Recargar recomendaciones después de cada evento
+        setTimeout(() => {
+          console.log('🔄 Recargando recomendaciones...');
+          loadRecommendations();
+        }, 500);
       }
     } catch (error) {
       console.error(`❌ Error en sendEventToHub (${eventType}):`, error);
@@ -444,7 +534,7 @@ function App() {
 
       {/* Movie Sections */}
       <div className="content">
-        <MovieRow title="Recomendadas" movies={popularMovies.slice(0, 10)} />
+        <MovieRow title="Recomendadas" movies={recommendedMovies.length > 0 ? recommendedMovies : popularMovies.slice(0, 10)} />
         <MovieRow title="Populares" movies={popularMovies.slice(10)} />
         <MovieRow title="Un poco de todo 🎲" movies={randomMovies} />
       </div>
