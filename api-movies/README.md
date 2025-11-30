@@ -8,14 +8,7 @@ Microservicio que se encarga de realizar consultas a la base de datos MongoDB At
 npm install
 ```
 
-## Configuración
 
-Crear un archivo `.env` con las siguientes variables:
-
-```
-PORT=3004
-MONGODB_URI=mongodb+srv://admin321:admin123@moviesdb.hsjqo6c.mongodb.net/?appName=MoviesDB
-```
 
 ## Desarrollo
 
