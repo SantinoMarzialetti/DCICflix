@@ -134,6 +134,7 @@ services:
       PLAYS_DIR: /data/plays
       RATINGS_DIR: /data/ratings
       SERVER_DATA_DIR: /server/data
+      API_MOVIES_URL: http://api-movies:3007/api/movies
     depends_on:
       - opiniones
       - api-movies
@@ -143,7 +144,7 @@ services:
       - ratings_data:/data/ratings
       - server_data:/server/data
     healthcheck:
-      test: wget --quiet --tries=1 --spider http://localhost:3005/api/health || exit 1
+      test: wget --quiet --tries=1 --spider http://localhost:3005/health || exit 1
       interval: 10s
       timeout: 5s
       retries: 3

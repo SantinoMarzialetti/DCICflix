@@ -1,21 +1,15 @@
 {
   "name": "recommender-service",
   "version": "1.0.0",
-  "description": "Microservicio de recomendaciones basado en clicks, plays y ratings",
-  "main": "server.js",
+  "description": "Microservicio de recomendaciones basado en clicks, plays y ratings (Python)",
+  "main": "server.py",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "python server.py",
+    "dev": "python server.py"
   },
   "keywords": ["recommendations", "analytics", "microservice"],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
-  }
+  "dependencies": {},
+  "devDependencies": {}
 }

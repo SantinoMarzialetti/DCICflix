@@ -5,6 +5,7 @@ import placeholderImage from './assets/placeholder-poster.svg';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 const RANDOM_API_URL = import.meta.env.VITE_RANDOM_API_URL || 'http://localhost:3001/api';
 const MOVIES_API_URL = import.meta.env.VITE_MOVIES_API_URL || 'http://localhost:3007/api/movies';
+const RECOMMENDER_API_URL = import.meta.env.VITE_RECOMMENDER_API_URL || 'http://localhost:3005/api';
 const PLACEHOLDER_POSTER = placeholderImage;
 
 function App() {
@@ -26,12 +27,12 @@ function App() {
     loadRecommendations(); // Cargar recomendaciones iniciales
   }, []);
 
-  // 🔄 Recargar recomendaciones automáticamente cada 5 segundos
+  // 🔄 Recargar recomendaciones automáticamente cada 3 segundos para mantener sincronizado
   useEffect(() => {
     const interval = setInterval(() => {
       console.log('🔄 Recargando recomendaciones automáticamente...');
       loadRecommendations();
-    }, 5000); // Cada 5 segundos
+    }, 3000); // Cada 3 segundos - más frecuente para reflejar cambios
 
     return () => clearInterval(interval);
   }, []);
@@ -125,71 +126,69 @@ function App() {
   // Cargar recomendaciones desde el microservicio recommender
   const loadRecommendations = async () => {
     try {
-      console.log('📊 Cargando recomendaciones desde:', `${API_URL}/recommendations`);
-      const response = await fetch(`${API_URL}/recommendations?limit=10`);
+      console.log('🎯 Obteniendo IDs de películas ponderadas desde recomendador');
       
-      if (!response.ok) {
-        console.warn('⚠️ Recommender no disponible, usando películas populares');
+      // 1️⃣ Obtener IDs de películas con mayor peso
+      const topWeightedRes = await fetch(`${RECOMMENDER_API_URL}/recommendations/top-weighted?limit=10`);
+      
+      if (!topWeightedRes.ok) {
+        console.warn('⚠️ No se pudo obtener películas ponderadas, usando fallback');
         return;
       }
 
-      const data = await response.json();
-      console.log('✅ Recomendaciones obtenidas:', data);
+      const topWeightedData = await topWeightedRes.json();
+      console.log('✅ IDs obtenidos:', topWeightedData);
 
-      if (data.recommendations && Array.isArray(data.recommendations)) {
-        // Mapear las recomendaciones a formato de película
-        const recommendedList = await Promise.all(
-          data.recommendations.map(async (rec) => {
-            // Intentar obtener detalles completos de la película desde API movies
-            try {
-              const movieRes = await fetch(`${MOVIES_API_URL}/${rec.movieId}`);
-              if (movieRes.ok) {
-                const movieData = await movieRes.json();
-                return {
-                  id: movieData._id || rec.movieId,
-                  title: rec.name || movieData.title,
-                  poster_path: movieData.poster || rec.poster || '',
-                  backdrop_path: movieData.poster || rec.poster || '',
-                  vote_average: movieData.imdb?.rating || rec.rating || 0,
-                  overview: movieData.plot || movieData.fullplot || rec.overview || '',
-                  release_date: movieData.released ? new Date(movieData.released).toISOString().split('T')[0] : null,
-                  original_language: 'en',
-                  poster: movieData.poster || '',
-                  genres: movieData.genres || rec.genre || [],
-                  director: movieData.directors?.[0] || rec.director || '',
-                  cast: movieData.cast || [],
-                  recommendationPhase: rec.phase,
-                  recommendationReason: rec.reason
-                };
-              }
-            } catch (error) {
-              console.warn(`⚠️ No se pudo obtener detalles de película ${rec.movieId}:`, error);
-            }
-            
-            // Fallback: usar los datos de la recomendación
-            return {
-              id: rec.movieId,
-              title: rec.name,
-              poster_path: rec.poster || '',
-              backdrop_path: rec.poster || '',
-              vote_average: rec.rating || 0,
-              overview: rec.overview || '',
-              release_date: null,
-              original_language: 'en',
-              poster: rec.poster || '',
-              genres: rec.genre || [],
-              director: rec.director || '',
-              cast: [],
-              recommendationPhase: rec.phase,
-              recommendationReason: rec.reason
-            };
-          })
-        );
-
-        setRecommendedMovies(recommendedList);
-        console.log('📊 Estado de interacciones:', data.stats);
-        console.log(`   Total: ${data.stats.total} (Clicks: ${data.stats.clicks}, Plays: ${data.stats.plays}, Ratings: ${data.stats.ratings})`);
+      if (!topWeightedData.movieIds || !Array.isArray(topWeightedData.movieIds)) {
+        console.warn('⚠️ Formato inválido de respuesta');
+        return;
       }
+
+      // 2️⃣ Pedir detalles de esas películas a api-movies
+      const recommendedList = await Promise.all(
+        topWeightedData.movieIds.map(async (movieId) => {
+          try {
+            console.log(`🎬 Obteniendo detalles de película: ${movieId}`);
+            const movieRes = await fetch(`${MOVIES_API_URL}/${movieId}`);
+            
+            if (movieRes.ok) {
+              const response = await movieRes.json();
+              // api-movies devuelve { success: true, data: {...} }
+              const movieData = response.data || response;
+              console.log(`✅ Película encontrada:`, movieData.title, '| Full data:', movieData);
+              
+              return {
+                id: movieData._id || movieId,
+                title: movieData.title || 'Sin título',
+                poster_path: movieData.poster || '',
+                backdrop_path: movieData.poster || '',
+                vote_average: movieData.imdb?.rating || 0,
+                overview: movieData.plot || movieData.fullplot || '',
+                release_date: movieData.year ? new Date(`${movieData.year}-01-01`).toISOString().split('T')[0] : null,
+                original_language: 'en',
+                poster: movieData.poster || '',
+                genres: movieData.genres || [],
+                director: movieData.directors?.[0] || '',
+                cast: movieData.cast || [],
+                recommendationReason: '🔥 Popular entre usuarios',
+                weight: topWeightedData.movies?.find(m => m.movieId === movieId)?.weight || 0
+              };
+            } else {
+              console.warn(`⚠️ Película ${movieId} no encontrada (404)`);
+            }
+          } catch (error) {
+            console.warn(`❌ Error obteniendo película ${movieId}:`, error);
+          }
+          
+          return null;
+        })
+      );
+
+      // Filtrar películas null y asignar
+      const validMovies = recommendedList.filter(m => m !== null);
+      setRecommendedMovies(validMovies);
+      console.log(`📊 ${validMovies.length} películas recomendadas cargadas correctamente`);
+
     } catch (error) {
       console.error('❌ Error cargando recomendaciones:', error);
     }
@@ -254,6 +253,32 @@ function App() {
       } else {
         const result = await response.json();
         console.log(`✅ Evento ${eventType} enviado exitosamente:`, result);
+        
+        // 📊 Notificar al recomendador para actualizar pesos
+        if (movieData && movieData.movieId) {
+          try {
+            console.log(`📊 Actualizando pesos del recomendador para película: ${movieData.movieId}`);
+            const weightsUpdateRes = await fetch(`${RECOMMENDER_API_URL}/recommendations/update-weights`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ movieId: movieData.movieId })
+            });
+            
+            const weightsResult = await weightsUpdateRes.json();
+            
+            if (weightsUpdateRes.ok) {
+              console.log(`✅ Pesos actualizados exitosamente:`, weightsResult);
+            } else {
+              console.error(`❌ Error actualizando pesos (HTTP ${weightsUpdateRes.status}):`, weightsResult);
+            }
+          } catch (error) {
+            console.error(`❌ Error crítico actualizando pesos:`, error);
+          }
+        } else {
+          console.warn(`⚠️ No hay movieId disponible para actualizar pesos`);
+        }
         
         // 🔄 Recargar recomendaciones después de cada evento
         setTimeout(() => {
