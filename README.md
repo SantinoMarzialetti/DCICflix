@@ -1,6 +1,9 @@
 **Para levantar todos los servicios correr por consola:**
     docker-compuse up --build
 
+**Como funciona el recomendador?**
+Nosotros optamos por implementar un recomendador que tenga dos fases (hibrido), una primera donde no se conozca al usuario y se hagan recomendaciones generales, y luego de una n cantidad de interacciones del usuario con el sistema, se pasa a un recomendador personalizado que va dando peso a peliculas en base a los clicks sobre peliculas que hace el usuario, las veces que presiona reproducir en las peliculas disponibles y también en base a sus calificaciones de peliculas. Todo esto se guarda en volumenes de docker para que el recomendador sea personal para cada pc que lo use. La unica interacción que se tiene con Atlas (repositorio remoto donde se encuentra la base de datos mongoDB que usamos) es para guardar y actualizar la calificación promedio que tiene cada película. Otro detalle que agregamos es que el sistema no recomienda una película que haya sido recomendada y se haya visto. Otra cuestión que nos surgió y no llegamos a mejorar es que la actualización de la sección **recomendadas** se da cada n tiempo, no cuando se actualiza la página, es algo que queda planteado para mejorar a futuro.
+
 # DCICflix - Sistema de Streaming de Películas con Microservicios
 
 Una plataforma Netflix-style construida con **arquitectura de microservicios** que captura eventos de usuario (clicks, reproducciones, calificaciones) y los procesa a través de un sistema de colas con RabbitMQ.
